@@ -1,2 +1,3 @@
-venv
+venv/
+workspace/
 1.out
