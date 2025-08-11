@@ -1,3 +1,7 @@
 venv/
 workspace/
+openmpi*
 1.out
+1.build*
+rccl-tests
+ucx
