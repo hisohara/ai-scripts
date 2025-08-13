@@ -9,3 +9,4 @@ sudo apt install -y git
 sudo apt install -y automake autoconf libtool pkg-config
 sudo apt install -y libibverbs-dev librdmacm-dev libibumad-dev libpci-dev
 sudo apt install -y python3.12-venv
+sudo apt install -y liblzma-dev
