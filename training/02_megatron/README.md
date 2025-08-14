@@ -1,3 +1,13 @@
+Two ways are provided.
+- [Megatron-LM evaluation with container (recommended)](#megatron-lm-evaluation-with-container-recommended)
+  - It does not have to build libraries. The target examples are baremetal or
+slurm based environment with docker/podman privilege (AAC10 in AMD Accelerator Cloud).
+- [Megatron-LM evaluation without container](#megatron-lm-evaluation-without-container)
+  - On some environment, docker/podman are not available (e.g. AAC8 in AMD Accelerator Cloud).
+With this procedure, Megatron-LM environment can be built.
+
+# Megatron-LM evaluation with container (recommended)
+
 # Megatron-LM evaluation without container
 The following procedure is intended to be executed on AAC8 (Kubernates)
 environment, which does not allow to use container with Docker.
