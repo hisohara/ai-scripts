@@ -6,15 +6,152 @@ slurm based environment with docker/podman privilege (AAC10 in AMD Accelerator C
   - On some environment, docker/podman are not available (e.g. AAC8 in AMD Accelerator Cloud).
 With this procedure, Megatron-LM environment can be built.
 
+Llama2-7B model is evaluated.
+
+Reference is [Training a model with Megatron-LM for ROCm](https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/training/benchmark-docker/megatron-lm.html?model=pyt_megatron_lm_train_llama-2-7b).
+
+Performance targets are disclosed at [Performance Results with AMD ROCm™ Software](https://www.amd.com/en/developer/resources/rocm-hub/dev-ai/performance-results.html#tabs-a8deaeb413-item-21cea50186-tab).
+
 # Megatron-LM evaluation with container (recommended)
+## Preparation
+```bash
+$ podman pull rocm/megatron-lm:v25.6_py310
+$ alias drun='podman run -it --privileged --network=host --device=/dev/kfd --device=/dev/dri --device=/dev/infiniband --group-add video --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --shm-size 128G -v /shared/amdgpu/home/hisaki_ohara_7kq/Projects/podman_shared:/podman_shared'
+$ drun docker.io/rocm/megatron-lm:v25.6_py310
+```
+
+## Training data
+```bash
+root@gpu-53:/workspace/Megatron-LM# DATASET=wiki TOKENIZER_MODEL=NousResearch/Llama-2-7b-chat-hf bash examples/llama/prepare_dataset.sh
+```
+dataset should be synced within multiple nodes.
+
+## Execution on Single node
+```bash
+root@gpu-53:/workspace/Megatron-LM# more ./run_llama2-1node.sh
+#!/bin/bash
+
+export ROCM_PATH=/opt/rocm
+
+# For TransformerEngine
+# Not sure whether it is still needed for the execution
+export NVTE_FRAMEWORK=pytorch
+export PYTORCH_ROCM_ARCH=gfx942
+export NVTE_USE_HIPBLASLT=1
+
+export DATA_PATH="data/data_text_document"
+export "TOKENIZER_MODEL=NousResearch/Llama-2-7b-chat-hf"
+
+TEE_OUTPUT=1 \
+MBS=4 \
+BS=256 \
+TP=1 \
+TE_FP8=1 \
+SEQ_LENGTH=4096 \
+MODEL_SIZE=7 \
+TOTAL_ITERS=50 \
+USE_FLASH_ATTN=1 \
+GEMM_TUNING=1 \
+bash examples/llama/train_llama2.sh
+
+root@gpu-53:/workspace/Megatron-LM# ./run_llama2-1node.sh
+```
+
+## Execution on 2 nodes
+```bash
+# Check RDMA device
+root@gpu-53:/workspace/Megatron-LM# rdma link
+link mlx5_0/1 state ACTIVE physical_state LINK_UP netdev ens6np0
+link mlx5_1/1 state ACTIVE physical_state LINK_UP netdev ens5np0
+link mlx5_2/1 state ACTIVE physical_state LINK_UP netdev ens8np0
+link mlx5_3/1 state ACTIVE physical_state LINK_UP netdev ens7np0
+link mlx5_4/1 state ACTIVE physical_state LINK_UP netdev ens2np0
+link mlx5_5/1 state ACTIVE physical_state LINK_UP netdev ens1np0
+link mlx5_6/1 state ACTIVE physical_state LINK_UP netdev ens4np0
+link mlx5_9/1 state ACTIVE physical_state LINK_UP netdev ens3np0
+link mlx5_bond_0/1 state ACTIVE physical_state LINK_UP netdev ens10f0np0
+```
+- NODE0
+```bash
+root@gpu-53:/workspace/Megatron-LM# more run_llama2-2nodes.sh
+#!/bin/bash
+
+export ROCM_PATH=/opt/rocm
+
+# For TransformerEngine
+# Not sure whether it is still needed for the execution
+export NVTE_FRAMEWORK=pytorch
+export PYTORCH_ROCM_ARCH=gfx942
+export NVTE_USE_HIPBLASLT=1
+
+export DATA_PATH="data/data_text_document"
+export "TOKENIZER_MODEL=NousResearch/Llama-2-7b-chat-hf"
+
+export MASTER_ADDR=192.168.0.211
+export NNODES=2
+export NODE_RANK=0
+export DATA_CACHE_PATH=/podman_shared/cache
+export NCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_9
+export NCCL_SOCKET_IFNAME=bond0
+export GLOO_SOCKET_IFNAME=bond0
+
+TEE_OUTPUT=1 \
+MBS=4 \
+BS=512 \
+TP=1 \
+TE_FP8=1 \
+SEQ_LENGTH=4096 \
+MODEL_SIZE=7 \
+TOTAL_ITERS=50 \
+USE_FLASH_ATTN=1 \
+GEMM_TUNING=1 \
+bash examples/llama/train_llama2.sh
+
+root@gpu-53:/workspace/Megatron-LM# ./run_llama2-2nodes.sh
+```
+- NODE1
+```bash
+root@gpu-56:/workspace/Megatron-LM# more run_llama2-2nodes.sh
+#!/bin/bash
+
+export ROCM_PATH=/opt/rocm
+
+# For TransformerEngine
+# Not sure whether it is still needed for the execution
+export NVTE_FRAMEWORK=pytorch
+export PYTORCH_ROCM_ARCH=gfx942
+export NVTE_USE_HIPBLASLT=1
+
+export DATA_PATH="data/data_text_document"
+export "TOKENIZER_MODEL=NousResearch/Llama-2-7b-chat-hf"
+
+export MASTER_ADDR=192.168.0.211
+export NNODES=2
+export NODE_RANK=1    # <-- ONLY HERE
+export DATA_CACHE_PATH=/podman_shared/cache
+export NCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3,mlx5_4,mlx5_5,mlx5_6,mlx5_9
+export NCCL_SOCKET_IFNAME=bond0
+export GLOO_SOCKET_IFNAME=bond0
+
+TEE_OUTPUT=1 \
+MBS=4 \
+BS=512 \
+TP=1 \
+TE_FP8=1 \
+SEQ_LENGTH=4096 \
+MODEL_SIZE=7 \
+TOTAL_ITERS=50 \
+USE_FLASH_ATTN=1 \
+GEMM_TUNING=1 \
+bash examples/llama/train_llama2.sh
+
+root@gpu-56:/workspace/Megatron-LM# ./run_llama2-2nodes.sh
+```
 
 # Megatron-LM evaluation without container
 The following procedure is intended to be executed on AAC8 (Kubernates)
 environment, which does not allow to use container with Docker.
 
-Llama2-7B model is evaluated.
-
-Reference is [Training a model with Megatron-LM for ROCm](https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/training/benchmark-docker/megatron-lm.html?model=pyt_megatron_lm_train_llama-2-7b).
 
 ## Preparation
 
@@ -86,19 +223,17 @@ index 9743440b..dafc77e4 100644
 transformer_engine   2.1.0.dev0+8c4a512d
 ```
 
-## Preparation of training data
-
+## Training data
 ```bash
 (venv) $ DATASET=wiki TOKENIZER_MODEL=NousResearch/Llama-2-7b-chat-hf bash examples/llama/prepare_dataset.sh
 ```
 
-## Execution of Megatron-LM
+## Execution
 As the baseline, flash attention and grouped GEMM are not installed yet.
 They'll be evaluated later.
-
 ```bash
 # RUN script
-(venv) $ more run_llama2.sh
+(venv) $ more run_llama2-1node.sh
 #!/bin/bash
 
 export ROCM_PATH=/opt/rocm
@@ -123,12 +258,5 @@ USE_FLASH_ATTN=0 \
 GEMM_TUNING=0 \
 bash examples/llama/train_llama2.sh
 
-(venv) $ ./run_llama2.sh
-<snip>
- [2025-08-13 03:42:28] iteration       50/      50 | consumed samples:        12800 | elapsed time per iteration (ms): 10235.8 | mem usages: 0.7494 | throughput per GPU (TFLOP/s/GPU): 590.2 | learning rate: 9.999999E-05 | global batch size:   256 | lm loss: 7.272264E+00 | loss scale: 1.0 | grad norm: 1.571 | number of skipped iterations:   0 | number of nan iterations:   0 |
-
-throughput per GPU: 589.331914893617
-elapsed time per iteration: 10250.497872340427
-tokens/GPU/s: 12786.891099
-mem usages: 0.7494000000000002
+(venv) $ ./run_llama2-1node.sh
 ```
