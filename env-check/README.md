@@ -11,13 +11,13 @@
 ## Check
 1. NUMA auto-balancing
 ```/proc/sys/kernel/numa_balancing``` should be 0.
-Execute ```1.numa_balancing.sh```
+Execute ```numa_balancing.sh```
 
 2. Disable ACS
-Execute ```2.dis_acs.sh```. Confirm by ```sudo lspci -vvv |grep ACSCtl```.
+Execute ```dis_acs.sh```. Confirm by ```sudo lspci -vvv |grep ACSCtl```.
 
 3. Check PCIe link speed and payload size
-Execute ```3.pcie-check_gpu.sh```.
+Execute ```pcie-check_gpu.sh```.
 
 4. [Broadcom NIC] Check RDMA, PCIe and QoS
-Execute ```4.broadcom-check.sh```
+Execute ```broadcom-check.sh```
