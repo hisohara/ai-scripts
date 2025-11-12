@@ -1,4 +1,9 @@
 # RCCL primitive tests
+- [RCCL from PyTorch](#rccl-from-pytorch)
+- [RCCL Tests with MPI (AAC8 Kubernetes)](#rccl-tests-with-mpi-aac8-kubernetes)
+- [RCCL Tests with MPI (AAC10 MI300X Slurm)](#rccl-tests-with-mpi-aac10-mi300x-slurm)
+- [RCCL Tests with MPI (AAC11 MI325X Slurm)](#rccl-tests-with-mpi-aac11-mi325x-slurm)
+
 ## RCCL from PyTorch
 Refer to [PyTorch: Start Locally](https://pytorch.org/get-started/locally/)
 for the installation of pytorch. My preference is the installation with venv.
@@ -15,7 +20,7 @@ $ torchrun --nnodes=2 --nproc_per_node=8 --node_rank=0 --rdzv-id=allreduce --rdz
 $ torchrun --nnodes=2 --nproc_per_node=8 --node_rank=1 --rdzv-id=allreduce --rdzv-backend=c10d --rdzv-endpoint=<Node0 IP>:29500 rccl_allreduce.py
 ```
 
-## rccl-tests with MPI (AAC8 Kubernetes)
+## RCCL Tests with MPI (AAC8 Kubernetes)
 ```bash
 # Build UCX and OpenMPI
 $ ./build_mpi.sh
@@ -83,7 +88,7 @@ rccl-tests: Version develop:a7809b3
 #
 ```
 
-## rccl-tests with MPI (AAC10 Slurm)
+## RCCL Tests with MPI (AAC10 MI300X Slurm)
 ```bash
 $ module load rocm-6.4.2/ucx-1.18.0/ompi/5.0.3
 $ rdma link
@@ -174,4 +179,83 @@ Librccl path : /shared/apps/ubuntu/opt/rocm-6.4.2/lib/librccl.so.1
 # Out of bounds values : 0 OK
 # Avg bus bandwidth    : 92.3318
 #
+```
+
+## RCCL Tests with MPI (AAC11 MI325X Slurm)
+### 1 node all_reduce_perf run on each allocated node
+```bash
+$ more rccl-test-allreduce-1nodex8.sh
+#!/bin/bash
+
+module load rocm-6.4.1/ucx-1.18.0/ompi/5.0.7
+
+nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST")
+
+for node in $nodes; do
+        echo "====== $node ======"
+        mpirun -np 8 -H $node:8 /shared/apps/ubuntu/rocm-6.4.1/rccl-tests/build/all_reduce_perf -b 8 -e 16G -f 2 -g 1
+done
+
+$ ./rccl-test-allreduce-1nodex8.sh
+```
+
+### all_reduce_perf run on 1/2/4/8 nodes
+```bash
+$ more rccl-test-allreduce-multi.sh
+#!/bin/bash
+
+module load rocm-6.4.1/ucx-1.18.0/ompi/5.0.7
+
+list_1=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1 | paste -sd, - | sed 's/,/:8,/g;s/$/:8/')
+list_2=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 2 | paste -sd, - | sed 's/,/:8,/g;s/$/:8/')
+list_4=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 4 | paste -sd, - | sed 's/,/:8,/g;s/$/:8/')
+list_8=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 8 | paste -sd, - | sed 's/,/:8,/g;s/$/:8/')
+
+echo "====== 1-node ======"
+mpirun -np 8 -H $list_1 --mca pml ucx --mca btl ^openib -x NCCL_IB_GID_INDEX=3 -x NCCL_NET_GDR_LEVEL=3 \
+        -x NCCL_IB_HCA=bnxt_re0:1,bnxt_re1:1,bnxt_re2:1,bnxt_re3:1,bnxt_re4:1,bnxt_re5:1,bnxt_re7:1,bnxt_re8:1 \
+        -x UCX_NET_DEVICES=bnxt_re0:1,bnxt_re1:1,bnxt_re2:1,bnxt_re3:1,bnxt_re4:1,bnxt_re5:1,bnxt_re7:1,bnxt_re8:1 \
+        -x NCCL_SOCKET_IFNAME=enp49s0f1np1 \
+        -x NCCL_ALGO=Ring /shared/apps/ubuntu/rocm-6.4.1/rccl-tests/build/all_reduce_perf -b 8 -e 16G -f 2 -g 1
+
+echo "====== 2-node ======"
+mpirun -np 16 -H $list_2 --mca pml ucx --mca btl ^openib -x NCCL_IB_GID_INDEX=3 -x NCCL_NET_GDR_LEVEL=3 \
+        -x NCCL_IB_HCA=bnxt_re0:1,bnxt_re1:1,bnxt_re2:1,bnxt_re3:1,bnxt_re4:1,bnxt_re5:1,bnxt_re7:1,bnxt_re8:1 \
+        -x UCX_NET_DEVICES=bnxt_re0:1,bnxt_re1:1,bnxt_re2:1,bnxt_re3:1,bnxt_re4:1,bnxt_re5:1,bnxt_re7:1,bnxt_re8:1 \
+        -x NCCL_SOCKET_IFNAME=enp49s0f1np1 \
+        -x NCCL_ALGO=Ring /shared/apps/ubuntu/rocm-6.4.1/rccl-tests/build/all_reduce_perf -b 8 -e 16G -f 2 -g 1
+
+echo "====== 4-node ======"
+mpirun -np 32 -H $list_4 --mca pml ucx --mca btl ^openib -x NCCL_IB_GID_INDEX=3 -x NCCL_NET_GDR_LEVEL=3 \
+        -x NCCL_IB_HCA=bnxt_re0:1,bnxt_re1:1,bnxt_re2:1,bnxt_re3:1,bnxt_re4:1,bnxt_re5:1,bnxt_re7:1,bnxt_re8:1 \
+        -x UCX_NET_DEVICES=bnxt_re0:1,bnxt_re1:1,bnxt_re2:1,bnxt_re3:1,bnxt_re4:1,bnxt_re5:1,bnxt_re7:1,bnxt_re8:1 \
+        -x NCCL_SOCKET_IFNAME=enp49s0f1np1 \
+        -x NCCL_ALGO=Ring /shared/apps/ubuntu/rocm-6.4.1/rccl-tests/build/all_reduce_perf -b 8 -e 16G -f 2 -g 1
+
+
+echo "====== 8-node ======"
+mpirun -np 64 -H $list_8 --mca pml ucx --mca btl ^openib -x NCCL_IB_GID_INDEX=3 -x NCCL_NET_GDR_LEVEL=3 \
+        -x NCCL_IB_HCA=bnxt_re0:1,bnxt_re1:1,bnxt_re2:1,bnxt_re3:1,bnxt_re4:1,bnxt_re5:1,bnxt_re7:1,bnxt_re8:1 \
+        -x UCX_NET_DEVICES=bnxt_re0:1,bnxt_re1:1,bnxt_re2:1,bnxt_re3:1,bnxt_re4:1,bnxt_re5:1,bnxt_re7:1,bnxt_re8:1 \
+        -x NCCL_SOCKET_IFNAME=enp49s0f1np1 \
+        -x NCCL_ALGO=Ring /shared/apps/ubuntu/rocm-6.4.1/rccl-tests/build/all_reduce_perf -b 8 -e 16G -f 2 -g 1
+
+$ ./rccl-test-allreduce-multi.sh 2>&1 |tee result-allreduce-multi.log
+$ egrep "node|4294967296|8589934592|17179869184" result-allreduce-multi.log |grep -v nThread
+====== 1-node ======
+  4294967296    1073741824     float     sum      -1    23719  181.07  316.88      0    23774  180.66  316.16      0
+  8589934592    2147483648     float     sum      -1    47217  181.93  318.37      0    47268  181.73  318.03      0
+ 17179869184    4294967296     float     sum      -1    94222  182.33  319.08      0    94185  182.40  319.21      0
+====== 2-node ======
+  4294967296    1073741824     float     sum      -1    23192  185.19  347.23      0    23209  185.06  346.99      0
+  8589934592    2147483648     float     sum      -1    46123  186.24  349.20      0    46145  186.15  349.03      0
+ 17179869184    4294967296     float     sum      -1    91973  186.79  350.24      0    91996  186.75  350.15      0
+====== 4-node ======
+  4294967296    1073741824     float     sum      -1    23904  179.68  348.12      0    23914  179.60  347.98      0
+  8589934592    2147483648     float     sum      -1    47563  180.60  349.92      0    47624  180.37  349.47      0
+ 17179869184    4294967296     float     sum      -1    94942  180.95  350.59      0    94968  180.90  350.50      0
+====== 8-node ======
+  4294967296    1073741824     float     sum      -1    24572  174.79  344.13      0    24588  174.68  343.89      0
+  8589934592    2147483648     float     sum      -1    48321  177.77  349.98      0    48348  177.67  349.79      0
+ 17179869184    4294967296     float     sum      -1    96405  178.21  350.84      0    96498  178.03  350.50      0
 ```
