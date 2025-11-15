@@ -97,3 +97,8 @@ bash examples/run_slurm_pretrain.sh \
     --micro_batch_size 2 \
     --global_batch_size 256
 ```
+
+## Examples of outputs
+- [Llama2 70B 2-node](run-llama2-70B-2N.log)
+- [Llama2 7B 8-node](run-llama2-7B-8N.log)
+- [Mixtral 8x7B 8-node](run-mixtral-8x7B-8N.log)
