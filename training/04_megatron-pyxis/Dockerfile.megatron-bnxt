@@ -1,0 +1,24 @@
+ARG BASE_IMAGE=docker.io/rocm/megatron-lm:v25.9_gfx942
+FROM ${BASE_IMAGE}
+
+COPY libbnxt_re-231.0.162.0.tar.gz /tmp
+
+# Install libbnxt
+RUN apt update \
+    && mkdir -p /tmp/libbnxt \
+    && tar xzf /tmp/libbnxt_re-231.0.162.0.tar.gz -C /tmp/libbnxt --strip-components=1 \
+    && apt install -y linux-headers-6.5.0-45-generic libelf-dev \
+    && apt install -y gcc make libtool autoconf librdmacm-dev rdmacm-utils infiniband-diags ibverbs-utils perftest ethtool libibverbs-dev rdma-core strace \
+    && mv /usr/lib/x86_64-linux-gnu/libibverbs/libbnxt_re-rdmav34.so /usr/lib/x86_64-linux-gnu/libibverbs/libbnxt_re-rdmav34.so.inbox \
+    && cd /tmp/libbnxt/ \
+    && sh ./autogen.sh \
+    && ./configure \
+    && make -C /tmp/libbnxt clean all install \
+    && echo '/usr/local/lib' > /etc/ld.so.conf.d/libbnxt_re.conf \
+    && ldconfig \
+    && cp -f /tmp/libbnxt/bnxt_re.driver /etc/libibverbs.d/
+
+# Megatron-LM backward compatibility setup
+RUN cd /workspace/Megatron-LM/ \
+    && pip uninstall megatron-core \
+    && pip install -e .
