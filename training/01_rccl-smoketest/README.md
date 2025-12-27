@@ -4,7 +4,7 @@
 - [RCCL Tests with MPI (AAC10 MI300X Slurm)](#rccl-tests-with-mpi-aac10-mi300x-slurm)
 - [RCCL Tests with MPI (AAC11 MI325X Slurm)](#rccl-tests-with-mpi-aac11-mi325x-slurm)
 - [RCCL Tests with MPI (AAC14 MI355X with Pollara 400 Slurm)](#rccl-tests-with-mpi-aac14-mi355x-with-pollara-400-slurm)
-- [linux-rdma/perftest (AAC14 MI355X with Pollara 400 Slurm)](#linux-rdma-perftest-aac14-mi355x-with-pollara-400-slurm)
+- [linux-rdma/perftest (AAC14 MI355X with Pollara 400 Slurm)](#linux-rdmaperftest-aac14-mi355x-with-pollara-400-slurm)
 
 # RCCL
 ## RCCL from PyTorch
