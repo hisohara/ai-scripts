@@ -3,6 +3,7 @@
 - [RCCL Tests with MPI (AAC8 Kubernetes)](#rccl-tests-with-mpi-aac8-kubernetes)
 - [RCCL Tests with MPI (AAC10 MI300X Slurm)](#rccl-tests-with-mpi-aac10-mi300x-slurm)
 - [RCCL Tests with MPI (AAC11 MI325X Slurm)](#rccl-tests-with-mpi-aac11-mi325x-slurm)
+- [RCCL Tests with MPI (AAC14 MI355X with Pollara 400 Slurm)](#rccl-tests-with-mpi-aac14-mi355x-with-pollara-400-slurm)
 
 ## RCCL from PyTorch
 Refer to [PyTorch: Start Locally](https://pytorch.org/get-started/locally/)
@@ -258,4 +259,145 @@ $ egrep "node|4294967296|8589934592|17179869184" result-allreduce-multi.log |gre
   4294967296    1073741824     float     sum      -1    24572  174.79  344.13      0    24588  174.68  343.89      0
   8589934592    2147483648     float     sum      -1    48321  177.77  349.98      0    48348  177.67  349.79      0
  17179869184    4294967296     float     sum      -1    96405  178.21  350.84      0    96498  178.03  350.50      0
+```
+## RCCL Tests with MPI (AAC14 MI355X with Pollara 400 Slurm)
+AMD ANP (AINIC Network Plugin) is required with RCCL.
+
+### References
+- [GitHub: ROCm/amd-anp](https://github.com/ROCm/amd-anp)
+- [AMD AI NIC Pollara 400 Adapter Operations and Troubleshooting User Guide (UG1801)](https://docs.amd.com/r/en-US/ug1801-ai-nic-pollara-400-ops-guide/RCCL-and-ANP-Installation-and-Configuration)
+
+```bash
+# Build UCX, OpenMPI, RCCL and ANP
+$ ./build_all-anp.sh
+
+# Build rccl-tests linked with built RCCL library
+$ ./build_rccl-tests-anp.sh
+
+# Run script
+$ more ./rccl-test-allreduce-multi-anp.sh
+#!/bin/bash
+
+set -euo pipefail
+
+module load rocm/7.0.1
+
+UCX_INSTALL_DIR=<set your env>
+MPI_INSTALL_DIR=<set your env>
+RCCL_INSTALL_DIR=<set your env>
+ANP_INSTALL_DIR=<set your env>
+
+
+BINARY_DIR=<set your env>
+
+export PATH=${MPI_INSTALL_DIR}/bin:$PATH
+export LD_LIBRARY_PATH=${UCX_INSTALL_DIR}/lib:${MPI_INSTALL_DIR}/lib:${RCCL_INSTALL_DIR}/lib:${ANP_INSTALL_DIR}:$LD_LIBRARY_PATH
+
+echo "==================================="
+echo "ANP_HOME_DIR:    $ANP_INSTALL_DIR"
+echo "RCCL_HOME_DIR:   $RCCL_INSTALL_DIR"
+echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
+echo "==================================="
+echo ""
+
+COMMAND=(
+    mpirun
+    -H mi355-gpu-23:8,mi355-gpu-24:8
+    --map-by slot
+    --bind-to numa
+    --mca btl '^vader,openib'
+    --mca pml ob1
+    --mca btl_tcp_if_include enp193s0f1np1
+    -x NCCL_SOCKET_IFNAME=enp193s0f1np1
+    -x IONIC_LOCKFREE=all
+    -x NCCL_IB_TC=104
+    -x NCCL_IB_FIFO_TC=192
+    -x NCCL_IB_GID_INDEX=1
+    -x NCCL_GDR_FLUSH_DISABLE=1
+    -x NCCL_DEBUG=Version
+    -x NCCL_IGNORE_CPU_AFFINITY=1
+    -x NCCL_NET_OPTIONAL_RECV_COMPLETION=1
+    -x NCCL_PXN_DISABLE=0
+    -x NCCL_IB_USE_INLINE=1
+    -x NCCL_IB_HCA=rocep121s0:1,rocep9s0:1,rocep105s0:1,rocep25s0:1,rocep249s0:1,rocep137s0:1,rocep233s0:1,rocep153s0:1
+    -x NCCL_DMABUF_ENABLE=0
+    -x RCCL_GDR_FLUSH_GPU_MEM_NO_RELAXED_ORDERING=0
+    -x LD_LIBRARY_PATH=${LD_LIBRARY_PATH}
+    -x LD_PRELOAD="${ANP_INSTALL_DIR}/librccl-net.so:${RCCL_INSTALL_DIR}/lib/librccl.so.1.0"
+    ${BINARY_DIR}/all_reduce_perf
+    -g 1
+    -f 2
+    -b 8
+    -e 16G
+    -n 20
+    -N 2
+)
+
+printf "%s " "${COMMAND[@]}"
+echo ""
+
+# Execute the command stored in the array
+"${COMMAND[@]}"
+```
+### Result on AAC14 with 2-node
+```bash
+rccl-tests: Version develop:5272cd1
+# Using devices
+#  Rank  0 Group  0 Pid 2908511 on mi355-gpu-23 device  0 [0000:75:00]
+#  Rank  1 Group  0 Pid 2908512 on mi355-gpu-23 device  1 [0000:05:00]
+#  Rank  2 Group  0 Pid 2908513 on mi355-gpu-23 device  2 [0000:65:00]
+#  Rank  3 Group  0 Pid 2908514 on mi355-gpu-23 device  3 [0000:15:00]
+#  Rank  4 Group  0 Pid 2908515 on mi355-gpu-23 device  4 [0000:f5:00]
+#  Rank  5 Group  0 Pid 2908516 on mi355-gpu-23 device  5 [0000:85:00]
+#  Rank  6 Group  0 Pid 2908517 on mi355-gpu-23 device  6 [0000:e5:00]
+#  Rank  7 Group  0 Pid 2908518 on mi355-gpu-23 device  7 [0000:95:00]
+#  Rank  8 Group  0 Pid 1167745 on mi355-gpu-24 device  0 [0000:75:00]
+#  Rank  9 Group  0 Pid 1167740 on mi355-gpu-24 device  1 [0000:05:00]
+#  Rank 10 Group  0 Pid 1167742 on mi355-gpu-24 device  2 [0000:65:00]
+#  Rank 11 Group  0 Pid 1167744 on mi355-gpu-24 device  3 [0000:15:00]
+#  Rank 12 Group  0 Pid 1167743 on mi355-gpu-24 device  4 [0000:f5:00]
+#  Rank 13 Group  0 Pid 1167741 on mi355-gpu-24 device  5 [0000:85:00]
+#  Rank 14 Group  0 Pid 1167746 on mi355-gpu-24 device  6 [0000:e5:00]
+#  Rank 15 Group  0 Pid 1167747 on mi355-gpu-24 device  7 [0000:95:00]
+RCCL version : 2.26.6-HEAD:6ade506
+HIP version  : 7.0.51831-a3e329ad8
+ROCm version : 7.0.1.0-42-9428210
+Hostname     : mi355-gpu-23
+Librccl path : /shared/amdgpu/home/hisaki_ohara_7kq/Projects/ai-scripts/training/01_rccl-smoketest/RCCL-ANP.1/rccl-6ade506/build/release/build/lib/librccl.so.1.0
+#
+#                                                              out-of-place                       in-place
+#       size         count      type   redop    root     time   algbw   busbw #wrong     time   algbw   busbw #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)            (us)  (GB/s)  (GB/s)
+# Testing 1 cycle.
+           8             2     float     sum      -1    41.16    0.00    0.00      0    39.80    0.00    0.00      0
+          16             4     float     sum      -1    40.09    0.00    0.00      0    39.52    0.00    0.00      0
+          32             8     float     sum      -1    39.34    0.00    0.00      0    40.04    0.00    0.00      0
+          64            16     float     sum      -1    40.38    0.00    0.00      0    43.36    0.00    0.00      0
+         128            32     float     sum      -1    41.41    0.00    0.01      0    41.59    0.00    0.01      0
+         256            64     float     sum      -1    43.11    0.01    0.01      0    43.29    0.01    0.01      0
+         512           128     float     sum      -1    44.18    0.01    0.02      0    44.31    0.01    0.02      0
+        1024           256     float     sum      -1    47.20    0.02    0.04      0    47.28    0.02    0.04      0
+        2048           512     float     sum      -1    50.81    0.04    0.08      0    50.82    0.04    0.08      0
+        4096          1024     float     sum      -1    55.28    0.07    0.14      0    52.19    0.08    0.15      0
+        8192          2048     float     sum      -1    55.27    0.15    0.28      0    53.00    0.15    0.29      0
+       16384          4096     float     sum      -1    56.25    0.29    0.55      0    54.10    0.30    0.57      0
+       32768          8192     float     sum      -1    56.51    0.58    1.09      0    56.03    0.58    1.10      0
+       65536         16384     float     sum      -1    59.17    1.11    2.08      0    59.74    1.10    2.06      0
+      131072         32768     float     sum      -1    65.97    1.99    3.73      0    66.40    1.97    3.70      0
+      262144         65536     float     sum      -1    67.22    3.90    7.31      0    67.44    3.89    7.29      0
+      524288        131072     float     sum      -1    69.78    7.51   14.09      0    68.90    7.61   14.27      0
+     1048576        262144     float     sum      -1    81.37   12.89   24.16      0    82.36   12.73   23.87      0
+     2097152        524288     float     sum      -1    98.50   21.29   39.92      0    99.08   21.17   39.68      0
+     4194304       1048576     float     sum      -1    118.6   35.36   66.30      0    119.5   35.09   65.79      0
+     8388608       2097152     float     sum      -1    166.5   50.39   94.49      0    164.6   50.95   95.54      0
+    16777216       4194304     float     sum      -1    261.6   64.12  120.23      0    259.3   64.70  121.30      0
+    33554432       8388608     float     sum      -1    391.8   85.65  160.59      0    391.4   85.74  160.76      0
+    67108864      16777216     float     sum      -1    614.3  109.25  204.84      0    612.6  109.55  205.40      0
+   134217728      33554432     float     sum      -1   1041.8  128.84  241.57      0   1043.5  128.63  241.17      0
+   268435456      67108864     float     sum      -1   1652.0  162.49  304.67      0   1604.5  167.30  313.68      0
+   536870912     134217728     float     sum      -1   2880.5  186.38  349.47      0   2865.4  187.36  351.31      0
+  1073741824     268435456     float     sum      -1   5525.0  194.34  364.39      0   5525.8  194.31  364.34      0
+  2147483648     536870912     float     sum      -1    10989  195.41  366.40      0    10990  195.41  366.39      0
+  4294967296    1073741824     float     sum      -1    21870  196.38  368.22      0    21868  196.41  368.26      0
+  8589934592    2147483648     float     sum      -1    43643  196.82  369.04      0    43639  196.84  369.08      0
 ```
