@@ -1,10 +1,12 @@
-# RCCL primitive tests
+# Index 
 - [RCCL from PyTorch](#rccl-from-pytorch)
 - [RCCL Tests with MPI (AAC8 Kubernetes)](#rccl-tests-with-mpi-aac8-kubernetes)
 - [RCCL Tests with MPI (AAC10 MI300X Slurm)](#rccl-tests-with-mpi-aac10-mi300x-slurm)
 - [RCCL Tests with MPI (AAC11 MI325X Slurm)](#rccl-tests-with-mpi-aac11-mi325x-slurm)
 - [RCCL Tests with MPI (AAC14 MI355X with Pollara 400 Slurm)](#rccl-tests-with-mpi-aac14-mi355x-with-pollara-400-slurm)
+- [linux-rdma/perftest (AAC14 MI355X with Pollara 400 Slurm)](#linux-rdma-perftest-aac14-mi355x-with-pollara-400-slurm)
 
+# RCCL
 ## RCCL from PyTorch
 Refer to [PyTorch: Start Locally](https://pytorch.org/get-started/locally/)
 for the installation of pytorch. My preference is the installation with venv.
@@ -401,3 +403,121 @@ Librccl path : /shared/amdgpu/home/hisaki_ohara_7kq/Projects/ai-scripts/training
   4294967296    1073741824     float     sum      -1    21870  196.38  368.22      0    21868  196.41  368.26      0
   8589934592    2147483648     float     sum      -1    43643  196.82  369.04      0    43639  196.84  369.08      0
 ```
+
+# linux-rdma/perftest (AAC14 MI355X with Pollara 400 Slurm)
+## Confirma mapping of NIC device with GPU ID
+```bash
+hisaki_ohara_7kq@gpu-6:~$ lstopo-no-graphics | grep -iE 'HostBridge|ProcessingAccelerator|bnxt'
+    HostBridge
+                PCI 05:00.0 (ProcessingAccelerator)
+              OpenFabrics "bnxt_re1"
+    HostBridge
+                PCI 15:00.0 (ProcessingAccelerator)
+              OpenFabrics "bnxt_re3"
+    HostBridge
+    HostBridge
+    HostBridge
+    HostBridge
+                PCI 65:00.0 (ProcessingAccelerator)
+              OpenFabrics "bnxt_re2"
+    HostBridge
+                PCI 75:00.0 (ProcessingAccelerator)
+              OpenFabrics "bnxt_re0"
+    HostBridge
+                PCI 85:00.0 (ProcessingAccelerator)
+              OpenFabrics "bnxt_re5"
+    HostBridge
+                PCI 95:00.0 (ProcessingAccelerator)
+              OpenFabrics "bnxt_re8"
+    HostBridge
+    HostBridge
+          OpenFabrics "bnxt_re6"
+    HostBridge
+    HostBridge
+                PCI e5:00.0 (ProcessingAccelerator)
+              OpenFabrics "bnxt_re7"
+    HostBridge
+                PCI f5:00.0 (ProcessingAccelerator)
+              OpenFabrics "bnxt_re4"
+
+hisaki_ohara_7kq@gpu-6:~$ amd-smi list|egrep "GPU|BDF"
+GPU: 0
+    BDF: 0000:05:00.0
+GPU: 1
+    BDF: 0000:15:00.0
+GPU: 2
+    BDF: 0000:65:00.0
+GPU: 3
+    BDF: 0000:75:00.0
+GPU: 4
+    BDF: 0000:85:00.0
+GPU: 5
+    BDF: 0000:95:00.0
+GPU: 6
+    BDF: 0000:e5:00.0
+GPU: 7
+    BDF: 0000:f5:00.0
+```
+For the case of above (on AAC11, the same way for AINIC), the mapping is as like follows.
+
+| NIC rdma ID | GPU ID |
+| --- | --- |
+| bnxt_re0 | 3 |
+| bnxt_re1 | 0 |
+| bnxt_re2 | 2 |
+| bnxt_re3 | 1 |
+| bnxt_re4 | 7 |
+| bnxt_re5 | 4 |
+| bnxt_re7 | 6 |
+| bnxt_re8 | 5 |
+
+## How to build
+```bash
+$ git clone https://github.com/linux-rdma/perftest.git
+$ cd perftest
+$ ./autogen.sh
+$ ./configure --prefix=$PWD/install --enable-rocm --with-rocm=/opt/rocm
+``` 
+
+## Run script
+Adjust `rocm_dev` to reflect above mapping.
+
+```bash
+#!/usr/bin/bash
+
+set -x
+
+server="gpu-6" # change this
+client="gpu-12" # change this
+
+node=(0 0 0 0 1 1 1 1)
+path_to_perftest=<dir to your perftest>
+rdmadev=(bnxt_re0 bnxt_re1 bnxt_re2 bnxt_re3 bnxt_re4 bnxt_re5 bnxt_re7 bnxt_re8) # !!! adjust this according to your rdma (openfabrics) NIC device name
+rocm_dev=(3 0 2 1 7 4 6 5) # adjust this to reflect what GPU ROCm ID aligns with the rdma (openfabrics) NIC device
+
+num_dev=${#rdmadev[@]}
+
+# bandwidth tests unidirectional
+for benchmark in ib_read_bw ib_write_bw ib_send_bw; do
+    for i in $(seq 0 $((num_dev - 1))); do
+        printf "deviceinfo -- rdmadev: %s,\tlocal_ipaddr: %s,\trocm_dev: %s\n" ${rdmadev[i]} ${server} ${rocm_dev[i]}
+
+        # H2H bandwidth
+        killall ib_send_lat ib_read_lat ib_write_lat ib_send_bw ib_read_bw ib_write_bw
+        ${path_to_perftest}/perftest/install/bin/${benchmark} -d ${rdmadev[i]} -x 3 -q 2 --report_gbits -F -a &
+        ssh amd@${client} "killall ib_send_lat ib_read_lat ib_write_lat ib_send_bw ib_read_bw ib_write_bw"
+        ssh amd@${client} "${path_to_perftest}/perftest/install/bin/${benchmark} -d ${rdmadev[i]} -x 3 -q 2 --report_gbits -F -a ${server}" 2>&1 | tee ${benchmark}_h2h_${rdmadev[i]}_unidi.log
+
+        # D2D bandwidth
+        killall ib_send_lat ib_read_lat ib_write_lat ib_send_bw ib_read_bw ib_write_bw
+        ${path_to_perftest}/perftest/install/bin/${benchmark} -d ${rdmadev[i]} -x 3 -q 2 --report_gbits --use_rocm=${rocm_dev[i]} -F -a &
+        ssh amd@${client} "killall ib_send_lat ib_read_lat ib_write_lat ib_send_bw ib_read_bw ib_write_bw"
+        ssh amd@${client} "${path_to_perftest}/perftest/install/bin/${benchmark} -d ${rdmadev[i]} -x 3 -q 2 --report_gbits --use_rocm=${rocm_dev[i]} -F -a ${server}" 2>&1 | tee ${benchmark}_d2d_${rdmadev[i]}_rocm${rocm_dev[i]}_unidi.log
+
+    done
+done
+```
+
+
+
+
