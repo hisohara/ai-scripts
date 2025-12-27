@@ -405,7 +405,7 @@ Librccl path : /shared/amdgpu/home/hisaki_ohara_7kq/Projects/ai-scripts/training
 ```
 
 # linux-rdma/perftest (AAC14 MI355X with Pollara 400 Slurm)
-## Confirma mapping of NIC device with GPU ID
+## Confirm mapping of NIC device with GPU ID
 ```bash
 hisaki_ohara_7kq@gpu-6:~$ lstopo-no-graphics | grep -iE 'HostBridge|ProcessingAccelerator|bnxt'
     HostBridge
