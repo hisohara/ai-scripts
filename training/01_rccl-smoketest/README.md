@@ -418,7 +418,7 @@ In container on assigned nodes:
 $ ssh-keygen -t rsa -b 4096 -N "" -f ~/.ssh/id_rsa
 $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 $ chmod 600 ~/.ssh/authorized_keys
-$ /usr/sbin/sshd -p 2222  # please make sure that port 222 is not in use
+$ /usr/sbin/sshd -p 2222  # please make sure that port 2222 is not in use
 
 # Copy ~/.ssh/id_rsa.pub to ~/.ssh/authorized_keys in another node
 ```
