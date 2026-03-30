@@ -4,6 +4,7 @@
 - [RCCL Tests with MPI (AAC10 MI300X Slurm)](#rccl-tests-with-mpi-aac10-mi300x-slurm)
 - [RCCL Tests with MPI (AAC11 MI325X Slurm)](#rccl-tests-with-mpi-aac11-mi325x-slurm)
 - [RCCL Tests with MPI (AAC14 MI355X with Pollara 400 Slurm)](#rccl-tests-with-mpi-aac14-mi355x-with-pollara-400-slurm)
+- [RCCL Tests with MPI (AAC14 MI355X with Pollara 400 Podman)](#rccl-tests-with-mpi-aac14-mi355x-with-pollara-400-podman)
 - [linux-rdma/perftest (AAC14 MI355X with Pollara 400 Slurm)](#linux-rdmaperftest-aac14-mi355x-with-pollara-400-slurm)
 
 # RCCL
@@ -402,6 +403,28 @@ Librccl path : /shared/amdgpu/home/hisaki_ohara_7kq/Projects/ai-scripts/training
   2147483648     536870912     float     sum      -1    10989  195.41  366.40      0    10990  195.41  366.39      0
   4294967296    1073741824     float     sum      -1    21870  196.38  368.22      0    21868  196.41  368.26      0
   8589934592    2147483648     float     sum      -1    43643  196.82  369.04      0    43639  196.84  369.08      0
+```
+
+## RCCL Tests with MPI (AAC14 MI355X with Pollara 400 Podman)
+This is the case such that no Slurm environment is provided on AAC14.
+```bash
+$ podman build -f Dockerfile.mpi-ainic -t docker.io/rocm/dev-ubuntu-22.04:mympi_7.2-complete
+$ podman run -it --device=/dev/dri --device=/dev/kfd --device=/dev/infiniband \
+--device=/dev/infiniband/rdma_cm --network=host --ipc=host --group-add keep-groups \
+docker.io/rocm/dev-ubuntu-22.04:mympi_7.2-complete
+```
+In container on assigned nodes:
+```bash
+$ ssh-keygen -t rsa -b 4096 -N "" -f ~/.ssh/id_rsa
+$ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+$ chmod 600 ~/.ssh/authorized_keys
+$ /usr/sbin/sshd -p 2222  # please make sure that port 222 is not in use
+
+# Copy ~/.ssh/id_rsa.pub to ~/.ssh/authorized_keys in another node
+```
+```bash
+$ cd /workspace
+$ ./rccl-test-allreduce-multi-anp-podman.sh
 ```
 
 # linux-rdma/perftest (AAC14 MI355X with Pollara 400 Slurm)
