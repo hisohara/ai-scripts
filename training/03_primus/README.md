@@ -1,4 +1,7 @@
 # Primus for distributed training
+## Index
+- [Primus evaluation on AAC11 (MI325X)](#primus-evaluation-on-aac11-mi325x)
+- [Primus evaluation on AAC14 (MI355X)](#primus-evaluation-on-aac14-mi355x)
 ## References
 - [Training a model with Primus and Megatron-LM](https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/training/benchmark-docker/primus-megatron.html)
 - [GitHub: AMD-AGI/Primus](https://github.com/AMD-AGI/Primus)
@@ -98,7 +101,87 @@ bash examples/run_slurm_pretrain.sh \
     --global_batch_size 256
 ```
 
-## Examples of outputs
+### Examples of outputs
 - [Llama2 70B 2-node](run-llama2-70B-2N.log)
 - [Llama2 7B 8-node](run-llama2-7B-8N.log)
 - [Mixtral 8x7B 8-node](run-mixtral-8x7B-8N.log)
+
+## Primus evaluation on AAC14 (MI355X)
+```bash
+$ podman pull docker.io/rocm/primus:v26.2
+$ podman run -it --device=/dev/dri --device=/dev/kfd --device=/dev/infiniband --device=/dev/infiniband/rdma_cm \
+--network=host --ipc=host --group-add keep-groups -e HF_TOKEN=$HF_TOKEN docker.io/rocm/primus:v26.2
+
+$ cd /shared/data
+$ tar zxvf ainic_bundle_1.117.5-a-56.tar.gz
+$ cd ainic_bundle_1.117.5-a-56/
+$ tar zxvf host_sw_pkg.tar.gz
+$ cd host_sw_pkg/ionic_driver/src/
+$ tar xvf drivers-linux.tar.xz
+$ podman cp /shared/data/ainic_bundle_1.117.5-a-56 <CONTAINER_ID>:/tmp
+```
+
+### In container
+```bash
+$ cd /workspace/Primus
+
+# To avoid SEGV, modify examples/run_pretrain.sh
+$ diff -u examples/run_pretrain.sh.0 examples/run_pretrain.sh
+--- examples/run_pretrain.sh.0  2026-04-23 07:05:17.925132421 +0000
++++ examples/run_pretrain.sh    2026-04-23 07:08:08.036614307 +0000
+@@ -223,7 +223,7 @@
+         export NCCL_DMABUF_ENABLE=0
+         export NCCL_IB_QPS_PER_CONNECTION=1
+
+-        export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu/libibverbs:${RCCL_HOME_DIR}/build/release:${ANP_HOME_DIR}/build:${MPI_HOME_DIR}/lib:$LD_LIBRARY_PATH
++        export LD_LIBRARY_PATH=${RCCL_HOME_DIR}/build/release:${ANP_HOME_DIR}/build:$LD_LIBRARY_PATH
+     fi
+     # Check which NCCL net plugin library is present under ${ANP_HOME_DIR}/build and set accordingly
+     if [ -f "${ANP_HOME_DIR}/build/librccl-anp.so" ]; then
+```
+
+ionic's userland library needs to be install to avoid ABI mismatch.
+```bash
+$ cd /tmp/ainic_bundle_1.117.5-a-56/host_sw_pkg/ionic_driver/src/drivers-linux/rdma-core/
+$ mkdir build; cd build
+$ cmake -GNinja -DCMAKE_INSTALL_PREFIX:PATH=/usr -DNO_PYVERBS=1 -DNO_MAN_PAGES=1 $EXTRA_CMAKE_FLAGS ..
+$ ninja
+$ sudo ninja install
+$ ibv_devices
+    device                 node GUID
+    ------              ----------------
+    rocep121s0          069081fffe369f90
+    rocep9s0            069081fffe366e28
+    rocep105s0          069081fffe36c0a8
+    rocep25s0           069081fffe3695b8
+    rocep249s0          069081fffe3670f8
+    rocep137s0          069081fffe365b98
+    rocep233s0          069081fffe366c30
+    rocep153s0          069081fffe365b38
+    rocep193s0f0        7ec255fffebaf228
+    rocep193s0f1        7ec255fffebaf229
+$ more RUN.sh
+#!/bin/bash
+
+export EXP=examples/megatron/configs/MI355X/qwen3_30B_A3B-BF16-pretrain.yaml
+
+export HSA_NO_SCRATCH_RECLAIM=1
+export NVTE_CK_USES_BWD_V3=1
+
+export NNODES=2                         # Number of nodes (default: 1)
+export NODE_RANK=0                      # Current node rank (default: 0)
+export GPUS_PER_NODE=8                  # Number of GPUs per node (default: 8)
+export MASTER_ADDR=mi355-gpu-22         # Master node address (default: localhost)
+export MASTER_PORT=1234                 # Master node port (default: 1234)
+export PRIMUS_HIPBLASLT_TUNING_STAGE=0  # HipBLASLt tuning stage: 0/1/2/3 (default: 0)
+
+export NCCL_IB_HCA=rocep105s0:1,rocep121s0:1,rocep137s0:1,rocep153s0:1,rocep233s0:1,rocep249s0:1,rocep25s0:1,rocep9s0:1
+
+export USING_AINIC=1
+export ANP_HOME_DIR=/workspace/amd-anp
+export RCCL_HOME_DIR=/workspace/rccl
+export NCCL_DEBUG=Version
+
+bash examples/run_pretrain.sh
+```
+In another node, change `NODE_RANK` as 1.
